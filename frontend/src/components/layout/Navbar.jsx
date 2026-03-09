@@ -34,18 +34,38 @@ export default function Navbar() {
       { label: 'Geçmiş', path: '/student/history' },
     ],
     instructor: [
-      { label: 'Dersler', path: '/instructor' },
+      { label: 'Panel', path: '/instructor' },
       { label: 'Sınavlar', path: '/instructor/exams' },
+      { label: 'Öğrenciler', path: '/instructor/students' },
       { label: 'Gözetmen Ata', path: '/instructor/proctors' },
       { label: 'Uyuşmazlıklar', path: '/instructor/conflicts' },
     ],
     proctor: [
       { label: 'İncelemeler', path: '/proctor' },
     ],
+    admin: [
+      { label: 'Panel', path: '/admin' },
+      { label: 'Dersler', path: '/admin/courses' },
+      { label: 'Kullanıcılar', path: '/admin/users' },
+      { label: 'Öğrenci Ata', path: '/admin/enrollments' },
+    ],
   }
 
   const items = menuItems[user?.role] || []
-  const roleLabel = { student: 'Öğrenci', instructor: 'Eğitmen', proctor: 'Gözetmen' }
+  
+  const roleLabel = {
+    student: 'Öğrenci',
+    instructor: 'Eğitmen',
+    proctor: 'Gözetmen',
+    admin: 'Admin',
+  }
+  
+  const roleColor = {
+    student: 'bg-green-100 text-green-700',
+    instructor: 'bg-blue-100 text-blue-700',
+    proctor: 'bg-yellow-100 text-yellow-700',
+    admin: 'bg-purple-100 text-purple-700',
+  }
 
   return (
     <nav className="bg-white shadow-sm border-b border-gray-200">
@@ -90,16 +110,27 @@ export default function Navbar() {
 
             <div className="hidden sm:flex items-center gap-3 pl-4 border-l border-gray-200">
               <div className="text-right">
-                <p className="text-sm font-medium text-gray-900">{user?.first_name} {user?.last_name}</p>
-                <p className="text-xs text-gray-500">{roleLabel[user?.role]}</p>
+                <p className="text-sm font-medium text-gray-900">
+                  {user?.first_name} {user?.last_name}
+                </p>
+                <span className={`text-xs px-2 py-0.5 rounded-full ${roleColor[user?.role]}`}>
+                  {roleLabel[user?.role]}
+                </span>
               </div>
-              <button onClick={handleLogout} className="p-2 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition">
+              <button
+                onClick={handleLogout}
+                className="p-2 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition"
+                title="Çıkış Yap"
+              >
                 <LogOut size={20} />
               </button>
             </div>
 
             {/* Mobile Menu Toggle */}
-            <button onClick={() => setMobileOpen(!mobileOpen)} className="md:hidden p-2 text-gray-600">
+            <button
+              onClick={() => setMobileOpen(!mobileOpen)}
+              className="md:hidden p-2 text-gray-600"
+            >
               {mobileOpen ? <X size={24} /> : <Menu size={24} />}
             </button>
           </div>
@@ -110,15 +141,36 @@ export default function Navbar() {
       {mobileOpen && (
         <div className="md:hidden border-t border-gray-200 bg-white px-4 py-3 space-y-1">
           {items.map((item) => (
-            <Link key={item.path} to={item.path} onClick={() => setMobileOpen(false)}
-              className="block px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100">
+            <Link
+              key={item.path}
+              to={item.path}
+              onClick={() => setMobileOpen(false)}
+              className={`block px-3 py-2 rounded-lg text-sm font-medium ${
+                location.pathname === item.path
+                  ? 'bg-blue-50 text-blue-700'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
               {item.label}
             </Link>
           ))}
-          <button onClick={handleLogout}
-            className="w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50">
-            Çıkış Yap
-          </button>
+          <hr className="my-2" />
+          <div className="flex items-center justify-between px-3 py-2">
+            <div>
+              <p className="text-sm font-medium text-gray-900">
+                {user?.first_name} {user?.last_name}
+              </p>
+              <span className={`text-xs px-2 py-0.5 rounded-full ${roleColor[user?.role]}`}>
+                {roleLabel[user?.role]}
+              </span>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+            >
+              <LogOut size={20} />
+            </button>
+          </div>
         </div>
       )}
     </nav>

@@ -16,6 +16,7 @@ class UserRole(str, enum.Enum):
     student = "student"
     instructor = "instructor"
     proctor = "proctor"
+    admin = "admin"
 
 
 class User(Base):
@@ -47,6 +48,7 @@ class User(Base):
     enrollments = relationship("CourseEnrollment", back_populates="student")
     exam_sessions = relationship("ExamSession", back_populates="student")
     notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
+    enrollments = relationship("CourseEnrollment", back_populates="student")
 
     @property
     def full_name(self) -> str:

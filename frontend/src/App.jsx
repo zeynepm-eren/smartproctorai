@@ -25,6 +25,7 @@ import ExamEdit from './components/instructor/ExamEdit'
 import ExamStats from './components/instructor/ExamStats'
 import ConflictResolution from './components/instructor/ConflictResolution'
 import ProctorAssign from './components/instructor/ProctorAssign'
+import InstructorStudents from './components/instructor/InstructorStudents'
 
 // Exam
 import ExamInterface from './components/exam/ExamInterface'
@@ -32,15 +33,26 @@ import ExamInterface from './components/exam/ExamInterface'
 // Proctor
 import ProctorDashboard from './components/proctor/ProctorDashboard'
 
+// Admin
+import AdminDashboard from './components/admin/AdminDashboard'
+import AdminCourses from './components/admin/AdminCourses'
+import AdminUsers from './components/admin/AdminUsers'
+import AdminEnrollments from './components/admin/AdminEnrollments'
+
 /** Ana sayfa yönlendirmesi: Role göre dashboard'a atar. */
 function HomeRedirect() {
   const { user, loading } = useAuth()
   if (loading) return null
   if (!user) return <Navigate to="/login" replace />
   switch (user.role) {
-    case 'instructor': return <Navigate to="/instructor" replace />
-    case 'proctor': return <Navigate to="/proctor" replace />
-    default: return <Navigate to="/student" replace />
+    case 'admin':
+      return <Navigate to="/admin" replace />
+    case 'instructor':
+      return <Navigate to="/instructor" replace />
+    case 'proctor':
+      return <Navigate to="/proctor" replace />
+    default:
+      return <Navigate to="/student" replace />
   }
 }
 
@@ -74,6 +86,7 @@ export default function App() {
               <Route path="/instructor/exams/create" element={<ExamCreate />} />
               <Route path="/instructor/exams/:examId" element={<ExamEdit />} />
               <Route path="/instructor/exams/:examId/stats" element={<ExamStats />} />
+              <Route path="/instructor/students" element={<InstructorStudents />} />
               <Route path="/instructor/conflicts" element={<ConflictResolution />} />
               <Route path="/instructor/proctors" element={<ProctorAssign />} />
             </Route>
@@ -83,6 +96,16 @@ export default function App() {
           <Route element={<ProtectedRoute allowedRoles={['proctor']} />}>
             <Route element={<DashboardLayout />}>
               <Route path="/proctor" element={<ProctorDashboard />} />
+            </Route>
+          </Route>
+
+          {/* Admin Rotaları */}
+          <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
+            <Route element={<DashboardLayout />}>
+              <Route path="/admin" element={<AdminDashboard />} />
+              <Route path="/admin/courses" element={<AdminCourses />} />
+              <Route path="/admin/users" element={<AdminUsers />} />
+              <Route path="/admin/enrollments" element={<AdminEnrollments />} />
             </Route>
           </Route>
 

@@ -51,35 +51,76 @@ api.interceptors.response.use(
   }
 )
 
-// --- Auth ---
+// =============================================================================
+// AUTH API
+// =============================================================================
 export const authAPI = {
   register: (data) => api.post('/auth/register', data),
   login: (data) => api.post('/auth/login', data),
   getMe: () => api.get('/auth/me'),
+  
+  // Kullanıcı listeleri (Admin/Eğitmen)
+  getUsers: (params) => api.get('/auth/users', { params }),
+  getInstructors: () => api.get('/auth/instructors'),
+  getStudents: () => api.get('/auth/students'),
+  getProctors: () => api.get('/auth/proctors'),
 }
 
-// --- Courses ---
+// =============================================================================
+// COURSES API
+// =============================================================================
 export const courseAPI = {
+  // Temel CRUD
   list: () => api.get('/courses/'),
-  create: (data) => api.post('/courses/', data),
+  listAll: () => api.get('/courses/all'),
+  listUnassigned: () => api.get('/courses/unassigned'),
   get: (id) => api.get(`/courses/${id}`),
+  create: (data) => api.post('/courses/', data),
   update: (id, data) => api.put(`/courses/${id}`, data),
-  enroll: (courseId, data) => api.post(`/courses/${courseId}/enroll`, data),
+  delete: (id) => api.delete(`/courses/${id}`),
+  
+  // Eğitmen atama (Admin)
+  assignInstructor: (courseId, instructorId) =>
+    api.post(`/courses/${courseId}/assign-instructor`, { instructor_id: instructorId }),
+  removeInstructor: (courseId) =>
+    api.delete(`/courses/${courseId}/remove-instructor`),
+  
+  // Öğrenci kayıt (Admin/Eğitmen)
+  enroll: (courseId, studentId) =>
+    api.post(`/courses/${courseId}/enroll`, { student_id: studentId }),
+  enrollBulk: (courseId, studentIds) =>
+    api.post(`/courses/${courseId}/enroll-bulk`, { student_ids: studentIds }),
+  unenroll: (courseId, studentId) =>
+    api.delete(`/courses/${courseId}/unenroll/${studentId}`),
   students: (courseId) => api.get(`/courses/${courseId}/students`),
 }
 
-// --- Exams ---
+// =============================================================================
+// EXAMS API
+// =============================================================================
 export const examAPI = {
   list: () => api.get('/exams/'),
   create: (data) => api.post('/exams/', data),
   get: (id) => api.get(`/exams/${id}`),
   update: (id, data) => api.put(`/exams/${id}`, data),
+  delete: (id) => api.delete(`/exams/${id}`),
   addQuestion: (examId, data) => api.post(`/exams/${examId}/questions`, data),
   listQuestions: (examId) => api.get(`/exams/${examId}/questions`),
   listQuestionsStudent: (examId) => api.get(`/exams/${examId}/questions/student`),
+  
+  // Gözetmen atama
+  assignProctor: (examId, proctorId) =>
+    api.post(`/exams/${examId}/assign-proctor`, { proctor_id: proctorId }),
+  removeProctor: (examId, proctorId) =>
+    api.delete(`/exams/${examId}/remove-proctor/${proctorId}`),
+  
+  // Sonuçlar
+  getResults: (examId) => api.get(`/sessions/exam/${examId}/results`),
 }
 
-// --- Sessions ---
+// =============================================================================
+// SESSIONS API
+// =============================================================================
 export const sessionAPI = {
   start: (examId) => api.post(`/sessions/start/${examId}`),
   submitAnswer: (data) => api.post('/sessions/answer', data),
@@ -88,7 +129,9 @@ export const sessionAPI = {
   mySessions: () => api.get('/sessions/my-sessions'),
 }
 
-// --- Violations ---
+// =============================================================================
+// VIOLATIONS API
+// =============================================================================
 export const violationAPI = {
   log: (data) => api.post('/violations/log', data),
   uploadEvidence: (violationId, formData) =>
@@ -102,10 +145,20 @@ export const violationAPI = {
     api.post(`/violations/conflicts/${violationId}/resolve`, data),
 }
 
-// --- Notifications ---
+// =============================================================================
+// NOTIFICATIONS API
+// =============================================================================
 export const notificationAPI = {
   list: () => api.get('/notifications/'),
   markRead: (id) => api.put(`/notifications/${id}/read`),
+  markAllRead: () => api.put('/notifications/mark-all-read'),
+}
+
+// =============================================================================
+// ADMIN API
+// =============================================================================
+export const adminAPI = {
+  getStats: () => api.get('/admin/stats'),
 }
 
 export default api
