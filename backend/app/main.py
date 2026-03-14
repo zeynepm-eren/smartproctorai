@@ -1,14 +1,38 @@
 """
 SmartProctor - Ana Uygulama Giriş Noktası
 FastAPI uygulamasını yapılandırır ve tüm router'ları bağlar.
++ Zombie Hunter background task
 """
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
+from app.core.database import async_session_factory
 from app.routers import auth, courses, exams, sessions, violations, extras
 from app.middleware.audit import AuditLogMiddleware
+from app.services.heartbeat import set_db_session_factory, start_zombie_hunter, stop_zombie_hunter
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Uygulama başlangıç ve bitiş olaylarını yönetir.
+    - Başlangıçta Zombie Hunter'ı başlat
+    - Bitişte Zombie Hunter'ı durdur
+    """
+    # Startup
+    set_db_session_factory(async_session_factory)
+    start_zombie_hunter()
+    print("[SmartProctor] Uygulama başlatıldı")
+    
+    yield
+    
+    # Shutdown
+    stop_zombie_hunter()
+    print("[SmartProctor] Uygulama kapatıldı")
+
 
 # FastAPI uygulaması oluştur
 app = FastAPI(
@@ -17,6 +41,7 @@ app = FastAPI(
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 # CORS Ayarları

@@ -1,6 +1,8 @@
 """
-SmartProctor - İhlal Yönetimi Router
-İhlal loglama, çift kör doğrulama, uyuşmazlık çözümü ve bildirimler.
+SmartProctor - İhlal Yönetimi Router (Güncellenmiş)
++ İhlal cooldown (10sn)
++ Heartbeat endpoint
++ Ders bazlı ihlal listesi (gözetmen için)
 """
 
 from datetime import datetime, timezone
@@ -8,7 +10,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, joinedload
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_role
 from app.core.config import settings
@@ -19,6 +21,7 @@ from app.models.violation import (
 )
 from app.models.session import ExamSession
 from app.models.exam import Exam
+from app.models.course import Course
 from app.models.proctor import ProctorAssignment, Notification
 from app.schemas.violation import (
     ViolationCreate, ViolationResponse,
@@ -26,21 +29,83 @@ from app.schemas.violation import (
     ConflictResolveRequest, ConflictResponse,
     NotificationResponse,
 )
+from app.services.violation_cooldown import can_log_violation
+from app.services.heartbeat import record_heartbeat, get_last_heartbeat
 import os
 import uuid
 
 router = APIRouter(prefix="/api/violations", tags=["İhlaller"])
 
 
+# ============================================================================
+# HEARTBEAT ENDPOINT
+# ============================================================================
+
+@router.post("/heartbeat/{session_id}")
+async def heartbeat(
+    session_id: int,
+    current_user: User = Depends(require_role("student")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Öğrenci her 30 saniyede bir heartbeat gönderir."""
+    result = await db.execute(
+        select(ExamSession).where(
+            ExamSession.id == session_id,
+            ExamSession.student_id == current_user.id,
+        )
+    )
+    session = result.scalar_one_or_none()
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Oturum bulunamadı")
+
+    if session.status.value in ("submitted", "timed_out", "terminated"):
+        raise HTTPException(status_code=400, detail="Oturum zaten sonlanmış")
+
+    response = await record_heartbeat(session_id)
+    return response
+
+
+@router.get("/heartbeat/{session_id}/status")
+async def heartbeat_status(
+    session_id: int,
+    current_user: User = Depends(require_role("instructor", "proctor", "admin")),
+):
+    """Bir oturumun son heartbeat durumunu gösterir."""
+    last_hb = await get_last_heartbeat(session_id)
+
+    if last_hb is None:
+        return {"status": "no_heartbeat", "session_id": session_id}
+
+    now = datetime.now(timezone.utc)
+    seconds_ago = (now - last_hb).total_seconds()
+
+    return {
+        "status": "active" if seconds_ago < 90 else "inactive",
+        "session_id": session_id,
+        "last_heartbeat": last_hb.isoformat(),
+        "seconds_ago": int(seconds_ago),
+    }
+
+
+# ============================================================================
+# İHLAL KAYIT
+# ============================================================================
+
 @router.post("/log", response_model=ViolationResponse, status_code=status.HTTP_201_CREATED)
 async def log_violation(
     req: ViolationCreate,
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    AI veya tarayıcı tarafından tespit edilen ihlali kaydeder.
-    İhlal kaydedilince otomatik olarak gözetmenlere review ataması yapılır.
-    """
+    """AI veya tarayıcı tarafından tespit edilen ihlali kaydeder."""
+    # Cooldown kontrolü
+    can_log = await can_log_violation(req.session_id, req.violation_type)
+    if not can_log:
+        raise HTTPException(
+            status_code=429,
+            detail="Bu ihlal tipi için cooldown süresi dolmadı (10sn)"
+        )
+
     violation = Violation(
         session_id=req.session_id,
         violation_type=ViolationType(req.violation_type),
@@ -51,7 +116,7 @@ async def log_violation(
     await db.flush()
     await db.refresh(violation)
 
-    # Gözetmen ataması: Sınavın gözetmenlerini bul ve review oluştur
+    # Gözetmen ataması
     result = await db.execute(
         select(ExamSession).where(ExamSession.id == req.session_id)
     )
@@ -63,14 +128,13 @@ async def log_violation(
         )
         assignments = result.scalars().all()
 
-        for assignment in assignments[:2]:  # En fazla 2 gözetmen
+        for assignment in assignments[:2]:
             review = ViolationReview(
                 violation_id=violation.id,
                 proctor_id=assignment.proctor_id,
             )
             db.add(review)
 
-            # Gözetmene bildirim gönder
             notif = Notification(
                 user_id=assignment.proctor_id,
                 title="Yeni İhlal İnceleme Talebi",
@@ -89,13 +153,12 @@ async def upload_evidence(
     video: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
 ):
-    """İhlal kanıt videosunu (5 saniyelik .webm) yükler."""
+    """İhlal kanıt videosunu yükler."""
     result = await db.execute(select(Violation).where(Violation.id == violation_id))
     violation = result.scalar_one_or_none()
     if not violation:
         raise HTTPException(status_code=404, detail="İhlal bulunamadı")
 
-    # Dosya kaydet
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     filename = f"violation_{violation_id}_{uuid.uuid4().hex[:8]}.webm"
     filepath = os.path.join(settings.UPLOAD_DIR, filename)
@@ -110,25 +173,56 @@ async def upload_evidence(
     return {"video_path": violation.video_path}
 
 
-# --- Gözetmen İnceleme ---
-@router.get("/pending-reviews", response_model=List[ViolationResponse])
+# ============================================================================
+# GÖZETMEN İNCELEME - DERS BAZLI ANONİM LİSTE
+# ============================================================================
+
+@router.get("/pending-reviews")
 async def get_pending_reviews(
     current_user: User = Depends(require_role("proctor")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Gözetmenin bekleyen inceleme listesini döndürür (anonimleştirilmiş)."""
+    """
+    Gözetmenin bekleyen inceleme listesi.
+    Ders bazlı gruplandırılmış, öğrenci bilgisi ANONİM.
+    """
+    # İhlalleri session -> exam -> course ile birlikte getir
     result = await db.execute(
         select(Violation)
         .join(ViolationReview, ViolationReview.violation_id == Violation.id)
+        .join(ExamSession, ExamSession.id == Violation.session_id)
+        .join(Exam, Exam.id == ExamSession.exam_id)
+        .join(Course, Course.id == Exam.course_id)
         .where(
             ViolationReview.proctor_id == current_user.id,
             ViolationReview.decision == VerificationDecision.pending,
         )
+        .options(
+            selectinload(Violation.session).selectinload(ExamSession.exam).selectinload(Exam.course)
+        )
     )
-    violations = result.scalars().all()
+    violations = result.scalars().unique().all()
 
-    # Anonimleştirme: Öğrenci bilgisi döndürmüyoruz, sadece ID
-    return violations
+    # Ders bazlı gruplandır ve anonim yanıt oluştur
+    response = []
+    for v in violations:
+        course = v.session.exam.course if v.session and v.session.exam else None
+        response.append({
+            "id": v.id,
+            "session_id": v.session_id,
+            "violation_type": v.violation_type.value,
+            "confidence": float(v.confidence) if v.confidence else None,
+            "video_path": v.video_path,
+            "detected_at": v.detected_at.isoformat() if v.detected_at else None,
+            "created_at": v.created_at.isoformat() if v.created_at else None,
+            # Ders bilgisi (öğrenci bilgisi YOK - anonim)
+            "course_id": course.id if course else None,
+            "course_code": course.code if course else None,
+            "course_name": course.name if course else None,
+            "exam_title": v.session.exam.title if v.session and v.session.exam else None,
+        })
+
+    return response
 
 
 @router.post("/review/{violation_id}", response_model=ReviewResponse)
@@ -158,7 +252,7 @@ async def submit_review(
     await db.flush()
     await db.refresh(review)
 
-    # Her iki gözetmen de karar verdiyse uyuşmazlık kontrolü yap
+    # Uyuşmazlık kontrolü
     result = await db.execute(
         select(ViolationReview).where(ViolationReview.violation_id == violation_id)
     )
@@ -181,7 +275,6 @@ async def submit_review(
                 select(Exam).where(Exam.id == session.exam_id)
             )
             exam = result.scalar_one()
-            from app.models.course import Course
             result = await db.execute(select(Course).where(Course.id == exam.course_id))
             course = result.scalar_one()
 
@@ -191,11 +284,10 @@ async def submit_review(
             )
             db.add(conflict)
 
-            # Eğitmene bildirim
             notif = Notification(
                 user_id=course.instructor_id,
                 title="Uyuşmazlık Çözümü Gerekli",
-                body=f"İhlal #{violation_id} için gözetmenler uyuşamadı. Kararınız bekleniyor.",
+                body=f"İhlal #{violation_id} için gözetmenler uyuşamadı.",
                 link=f"/instructor/conflict/{violation_id}",
             )
             db.add(notif)
@@ -204,7 +296,10 @@ async def submit_review(
     return review
 
 
-# --- Uyuşmazlık Çözümü ---
+# ============================================================================
+# UYUŞMAZLIK ÇÖZÜMÜ
+# ============================================================================
+
 @router.get("/conflicts", response_model=List[ConflictResponse])
 async def list_conflicts(
     current_user: User = Depends(require_role("instructor")),
@@ -246,7 +341,10 @@ async def resolve_conflict(
     return conflict
 
 
-# --- Bildirimler ---
+# ============================================================================
+# BİLDİRİMLER
+# ============================================================================
+
 notifications_router = APIRouter(prefix="/api/notifications", tags=["Bildirimler"])
 
 

@@ -1,6 +1,7 @@
 """
 SmartProctor - İhlal ve Doğrulama Modelleri
 AI/tarayıcı ihlalleri, çift kör doğrulama ve uyuşmazlık çözümü.
++ Yeni ihlal tipleri: NO_FACE, HEAD_TURN, CONNECTION_LOST, KEYBOARD_SHORTCUT
 """
 
 import enum
@@ -14,15 +15,31 @@ from app.core.database import Base
 
 
 class ViolationType(str, enum.Enum):
+    # Tarayıcı İhlalleri
     TAB_SWITCH = "TAB_SWITCH"
     FULLSCREEN_EXIT = "FULLSCREEN_EXIT"
     COPY_PASTE = "COPY_PASTE"
     RIGHT_CLICK = "RIGHT_CLICK"
     DEVTOOLS = "DEVTOOLS"
+    KEYBOARD_SHORTCUT = "KEYBOARD_SHORTCUT"  # Yeni: Ctrl+C, Alt+Tab vb.
+    
+    # AI İhlalleri - Bakış
     GAZE_LEFT = "GAZE_LEFT"
     GAZE_RIGHT = "GAZE_RIGHT"
+    HEAD_TURN = "HEAD_TURN"  # Yeni: Baş çevirme (yaw/pitch threshold)
+    
+    # AI İhlalleri - Yüz
+    NO_FACE = "NO_FACE"  # Yeni: Yüz tespit edilemedi
+    MULTIPLE_FACES = "MULTIPLE_FACES"  # Yeni isim (MULTIPLE_PERSONS yerine)
+    
+    # AI İhlalleri - Nesne
     PHONE_DETECTED = "PHONE_DETECTED"
     MULTIPLE_PERSONS = "MULTIPLE_PERSONS"
+    
+    # Bağlantı
+    CONNECTION_LOST = "CONNECTION_LOST"  # Yeni: Heartbeat kesildi
+    
+    # Diğer
     OTHER = "OTHER"
 
 

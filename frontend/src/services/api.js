@@ -87,6 +87,8 @@ export const violationAPI = {
   submitReview: (violationId, data) => api.post(`/violations/review/${violationId}`, data),
   listConflicts: () => api.get('/violations/conflicts'),
   resolveConflict: (violationId, data) => api.post(`/violations/conflicts/${violationId}/resolve`, data),
+  heartbeat: (sessionId) => api.post(`/violations/heartbeat/${sessionId}`),
+  heartbeatStatus: (sessionId) => api.get(`/violations/heartbeat/${sessionId}/status`),
 }
 
 export const notificationAPI = {

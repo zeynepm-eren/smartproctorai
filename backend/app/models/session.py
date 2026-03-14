@@ -39,7 +39,7 @@ class ExamSession(Base):
     )
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    ip_address: Mapped[str | None] = mapped_column(INET, nullable=True)
     user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
     tab_switch_count: Mapped[int] = mapped_column(Integer, default=0)
     score: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
@@ -70,8 +70,8 @@ class StudentAnswer(Base):
     )
     is_correct: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     answered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     session = relationship("ExamSession", back_populates="answers")
+    question = relationship("Question")
+    selected_option = relationship("Option")
